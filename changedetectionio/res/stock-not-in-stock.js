@@ -1,6 +1,7 @@
 function isItemInStock() {
   // @todo Pass these in so the same list can be used in non-JS fetchers
   const outOfStockTexts = [
+    ' أخبرني عندما يتوفر',
     '0 in stock',
     'agotado',
     'artikel zurzeit vergriffen',
@@ -16,9 +17,12 @@ function isItemInStock() {
     'currently have any tickets for this',
     'currently unavailable',
     'dostępne wkrótce',
+    'dostępne wkrótce',
     'en rupture de stock',
     'ist derzeit nicht auf lager',
+    'ist derzeit nicht auf lager',
     'item is no longer available',
+    'let me know when it\'s available',
     'message if back in stock',
     'nachricht bei',
     'nicht auf lager',
@@ -36,13 +40,16 @@ function isItemInStock() {
     'out-of-stock',
     'produkt niedostępny',
     'sold out',
+    'sold-out',
     'temporarily out of stock',
     'temporarily unavailable',
     'tickets unavailable',
     'unavailable tickets',
     'we do not currently have an estimate of when this product will be back in stock.',
     'zur zeit nicht an lager',
+    '品切れ',
     '已售完',
+    '품절'
   ];
 
 
