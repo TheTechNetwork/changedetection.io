@@ -110,7 +110,7 @@ class steppable_browser_interface():
         self.page.click(selector=selector, timeout=30 * 1000, delay=randint(200, 500))
 
     def action_click_element_if_exists(self, selector, value):
-        import playwright._impl._api_types as _api_types
+        import playwright._impl._errors as _api_types
         print("Clicking element if exists")
         if not len(selector.strip()):
             return
@@ -123,6 +123,9 @@ class steppable_browser_interface():
             return
 
     def action_click_x_y(self, selector, value):
+        if not re.match(r'^\s?\d+\s?,\s?\d+\s?$', value):
+            raise Exception("'Click X,Y' step should be in the format of '100 , 90'")
+
         x, y = value.strip().split(',')
         x = int(float(x.strip()))
         y = int(float(y.strip()))

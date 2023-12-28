@@ -25,10 +25,9 @@ from distutils.util import strtobool
 from flask import Blueprint, request, make_response
 import logging
 import os
-import re
 
 from changedetectionio.store import ChangeDetectionStore
-from changedetectionio import login_optionally_required
+from changedetectionio.flask_app import login_optionally_required
 
 browsersteps_sessions = {}
 io_interface_context = None
@@ -152,7 +151,7 @@ def construct_blueprint(datastore: ChangeDetectionStore):
     @browser_steps_blueprint.route("/browsersteps_update", methods=['POST'])
     def browsersteps_ui_update():
         import base64
-        import playwright._impl._api_types
+        import playwright._impl._errors
         global browsersteps_sessions
         from changedetectionio.blueprint.browser_steps import browser_steps
 

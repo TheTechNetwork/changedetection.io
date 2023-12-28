@@ -3,6 +3,7 @@
 {% from '_helpers.jinja' import render_field, render_checkbox_field, render_button %}
 {% from '_common_fields.jinja' import render_common_settings_form %}
 <script src="{{url_for('static_content', group='js', filename='tabs.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='vis.js')}}" defer></script>
 <script>
     const browser_steps_available_screenshots=JSON.parse('{{ watch.get_browsersteps_available_screenshots|tojson }}');
     const browser_steps_config=JSON.parse('{{ browser_steps_config|tojson }}');
@@ -19,7 +20,7 @@
     const proxy_recheck_status_url="{{url_for('check_proxies.get_recheck_status', uuid=uuid)}}";
     const screenshot_url="{{url_for('static_content', group='screenshot', filename=uuid)}}";
     const watch_visual_selector_data_url="{{url_for('static_content', group='visual_selector_data', filename=uuid)}}";
-
+    const default_system_fetch_backend="{{ settings_application['fetch_backend'] }}";
 </script>
 
 <script src="{{url_for('static_content', group='js', filename='watch-settings.js')}}" defer></script>
@@ -124,10 +125,9 @@
                         </span>
                     </div>
                 {% endif %}
-                    <div  class="pure-control-group inline-radio">
-                        {{ render_checkbox_field(form.ignore_status_codes) }}
-                    </div>
-                <fieldset id="webdriver-override-options">
+
+                <!-- webdriver always -->
+                <fieldset data-visible-for="fetch_backend=html_webdriver"  style="display: none;">
                     <div class="pure-control-group">
                         {{ render_field(form.webdriver_delay) }}
                         <div class="pure-form-message-inline">
@@ -140,23 +140,40 @@
                         </div>
                     </div>
                     <div class="pure-control-group">
+                        <a class="pure-button button-secondary button-xsmall show-advanced">Show advanced options</a>
+                    </div>
+                    <div class="advanced-options"  style="display: none;">
                         {{ render_field(form.webdriver_js_execute_code) }}
                         <div class="pure-form-message-inline">
-                            Run this code before performing change detection, handy for filling in fields and other actions <a href="https://github.com/dgtlmoon/changedetection.io/wiki/Run-JavaScript-before-change-detection">More help and examples here</a>
+                            Run this code before performing change detection, handy for filling in fields and other
+                            actions <a
+                                href="https://github.com/dgtlmoon/changedetection.io/wiki/Run-JavaScript-before-change-detection">More
+                            help and examples here</a>
                         </div>
                     </div>
                 </fieldset>
-                <fieldset class="pure-group" id="requests-override-options">
-                    {% if not playwright_enabled %}
-                        <div class="pure-form-message-inline">
-                            <strong>Request override is currently only used by the <i>Basic fast Plaintext/HTTP Client</i> method.</strong>
-                        </div>
-                    {% endif %}
-                    <div class="pure-control-group" id="request-method">
-                        {{ render_field(form.method) }}
+                <!-- html requests always -->
+                <fieldset data-visible-for="fetch_backend=html_requests">
+                    <div class="pure-control-group">
+                        <a class="pure-button button-secondary button-xsmall show-advanced">Show advanced options</a>
                     </div>
-                    <div class="pure-control-group" id="request-headers">
-{{ render_field(form.headers, rows=5, placeholder="Example
+                    <div class="advanced-options"  style="display: none;">
+                        <div class="pure-control-group" id="request-method">
+                            {{ render_field(form.method) }}
+                        </div>
+                        <div id="request-body">
+                                            {{ render_field(form.body, rows=5, placeholder="Example
+{
+   \"name\":\"John\",
+   \"age\":30,
+   \"car\":null
+}") }}
+                        </div>
+                    </div>
+                </fieldset>
+            <!-- hmm -->
+                <div class="pure-control-group advanced-options"  style="display: none;">
+                    {{ render_field(form.headers, rows=5, placeholder="Example
 Cookie: foobar
 User-Agent: wonderbra 1.0") }}
 
@@ -169,17 +186,12 @@ User-Agent: wonderbra 1.0") }}
                             <br>
                             (Not supported by Selenium browser)
                         </div>
-
                     </div>
-                    <div class="pure-control-group" id="request-body">
-                                        {{ render_field(form.body, rows=5, placeholder="Example
-{
-   \"name\":\"John\",
-   \"age\":30,
-   \"car\":null
-}") }}
+            <fieldset data-visible-for="fetch_backend=html_requests fetch_backend=html_webdriver" >
+                    <div class="pure-control-group inline-radio advanced-options"  style="display: none;">
+                    {{ render_checkbox_field(form.ignore_status_codes) }}
                     </div>
-                </fieldset>
+            </fieldset>
             </div>
             {% if playwright_enabled %}
             <div class="tab-pane-inner" id="browser-steps">
