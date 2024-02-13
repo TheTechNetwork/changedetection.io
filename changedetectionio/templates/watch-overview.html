@@ -110,6 +110,7 @@
                     {% endif %}
 
                     {%if watch.is_pdf  %}<img class="status-icon" src="{{url_for('static_content', group='images', filename='pdf-icon.svg')}}" title="Converting PDF to text" >{% endif %}
+                    {% if watch.has_browser_steps %}<img class="status-icon status-browsersteps" src="{{url_for('static_content', group='images', filename='steps.svg')}}" title="Browser Steps is enabled" >{% endif %}
                     {% if watch.last_error is defined and watch.last_error != False %}
                     <div class="fetch-error">{{ watch.last_error }}
 
@@ -141,7 +142,7 @@
                     {% if watch['processor'] == 'restock_diff'  %}
                     <span class="restock-label {{'in-stock' if watch['in_stock'] else 'not-in-stock' }}" title="detecting restock conditions">
                         <!-- maybe some object watch['processor'][restock_diff] or.. -->
-                        {% if watch['last_checked'] %}
+                        {% if watch['last_checked'] and watch['in_stock'] != None %}
                             {% if watch['in_stock'] %} In stock {% else %} Not in stock {% endif %}
                         {% else %}
                             Not yet checked
