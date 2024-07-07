@@ -1,10 +1,11 @@
 from abc import abstractmethod
-import os
-import hashlib
-import re
+from changedetectionio.strtobool import strtobool
+from changedetectionio.model import Watch
 from copy import deepcopy
-from distutils.util import strtobool
 from loguru import logger
+import hashlib
+import os
+import re
 
 class difference_detection_processor():
 
@@ -21,7 +22,7 @@ class difference_detection_processor():
         self.watch = deepcopy(self.datastore.data['watching'].get(watch_uuid))
 
     def call_browser(self):
-
+        from requests.structures import CaseInsensitiveDict
         # Protect against file:// access
         if re.search(r'^file://', self.watch.get('url', '').strip(), re.IGNORECASE):
             if not strtobool(os.getenv('ALLOW_FILE_URI', 'false')):
@@ -75,12 +76,12 @@ class difference_detection_processor():
 
         proxy_url = None
         if preferred_proxy_id:
-            # Custom browser endpoints should not have a proxy added
-            if not preferred_proxy_id.startswith('ui-'):
+            # Custom browser endpoints should NOT have a proxy added
+            if not prefer_fetch_backend.startswith('extra_browser_'):
                 proxy_url = self.datastore.proxy_list.get(preferred_proxy_id).get('url')
                 logger.debug(f"Selected proxy key '{preferred_proxy_id}' as proxy URL '{proxy_url}' for {url}")
             else:
-                logger.debug(f"Skipping adding proxy data when custom Browser endpoint is specified.")
+                logger.debug(f"Skipping adding proxy data when custom Browser endpoint is specified. ")
 
         # Now call the fetcher (playwright/requests/etc) with arguments that only a fetcher would need.
         # When browser_connection_url is None, it method should default to working out whats the best defaults (os env vars etc)
@@ -93,7 +94,13 @@ class difference_detection_processor():
             self.fetcher.browser_steps_screenshot_path = os.path.join(self.datastore.datastore_path, self.watch.get('uuid'))
 
         # Tweak the base config with the per-watch ones
-        request_headers = self.watch.get('headers', [])
+        request_headers = CaseInsensitiveDict()
+
+        ua = self.datastore.data['settings']['requests'].get('default_ua')
+        if ua and ua.get(prefer_fetch_backend):
+            request_headers.update({'User-Agent': ua.get(prefer_fetch_backend)})
+
+        request_headers.update(self.watch.get('headers', {}))
         request_headers.update(self.datastore.get_all_base_headers())
         request_headers.update(self.datastore.get_all_headers_in_textfile_for_watch(uuid=self.watch.get('uuid')))
 
@@ -132,7 +139,7 @@ class difference_detection_processor():
         # After init, call run_changedetection() which will do the actual change-detection
 
     @abstractmethod
-    def run_changedetection(self, uuid, skip_when_checksum_same=True):
+    def run_changedetection(self, watch: Watch, skip_when_checksum_same=True):
         update_obj = {'last_notification_error': False, 'last_error': False}
         some_data = 'xxxxx'
         update_obj["previous_md5"] = hashlib.md5(some_data.encode('utf-8')).hexdigest()

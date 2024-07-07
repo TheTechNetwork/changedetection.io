@@ -5,9 +5,9 @@ import websockets.exceptions
 from urllib.parse import urlparse
 
 from loguru import logger
-from changedetectionio.content_fetchers.base import Fetcher
-from changedetectionio.content_fetchers.exceptions import PageUnloadable, Non200ErrorCodeReceived, EmptyReply, BrowserFetchTimedOut, BrowserConnectError
 
+from changedetectionio.content_fetchers.base import Fetcher, manage_user_agent
+from changedetectionio.content_fetchers.exceptions import PageUnloadable, Non200ErrorCodeReceived, EmptyReply, BrowserFetchTimedOut, BrowserConnectError
 
 class fetcher(Fetcher):
     fetcher_description = "Puppeteer/direct {}/Javascript".format(
@@ -92,18 +92,42 @@ class fetcher(Fetcher):
                                                        ignoreHTTPSErrors=True
                                                        )
         except websockets.exceptions.InvalidStatusCode as e:
-            raise BrowserConnectError(msg=f"Error while trying to connect the browser, Code {e.status_code} (check your access)")
+            raise BrowserConnectError(msg=f"Error while trying to connect the browser, Code {e.status_code} (check your access, whitelist IP, password etc)")
         except websockets.exceptions.InvalidURI:
             raise BrowserConnectError(msg=f"Error connecting to the browser, check your browser connection address (should be ws:// or wss://")
         except Exception as e:
             raise BrowserConnectError(msg=f"Error connecting to the browser {str(e)}")
+
+        # Better is to launch chrome with the URL as arg
+        # non-headless - newPage() will launch an extra tab/window, .browser should already contain 1 page/tab
+        # headless - ask a new page
+        self.page = (pages := await browser.pages) and len(pages) or await browser.newPage()
+
+        try:
+            from pyppeteerstealth import inject_evasions_into_page
+        except ImportError:
+            logger.debug("pyppeteerstealth module not available, skipping")
+            pass
         else:
-            self.page = await browser.newPage()
+            # I tried hooking events via self.page.on(Events.Page.DOMContentLoaded, inject_evasions_requiring_obj_to_page)
+            # But I could never get it to fire reliably, so we just inject it straight after
+            await inject_evasions_into_page(self.page)
+
+        # This user agent is similar to what was used when tweaking the evasions in inject_evasions_into_page(..)
+        user_agent = None
+        if request_headers and request_headers.get('User-Agent'):
+            # Request_headers should now be CaaseInsensitiveDict
+            # Remove it so it's not sent again with headers after
+            user_agent = request_headers.pop('User-Agent').strip()
+            await self.page.setUserAgent(user_agent)
+
+        if not user_agent:
+            # Attempt to strip 'HeadlessChrome' etc
+            await self.page.setUserAgent(manage_user_agent(headers=request_headers, current_ua=await self.page.evaluate('navigator.userAgent')))
 
         await self.page.setBypassCSP(True)
         if request_headers:
             await self.page.setExtraHTTPHeaders(request_headers)
-            # @todo check user-agent worked
 
         # SOCKS5 with authentication is not supported (yet)
         # https://github.com/microsoft/playwright/issues/10567
@@ -212,8 +236,12 @@ class fetcher(Fetcher):
                 logger.error('ERROR: Failed to get viewport-only reduced screenshot :(')
                 pass
         finally:
+            # It's good to log here in the case that the browser crashes on shutting down but we still get the data we need
+            logger.success(f"Fetching '{url}' complete, closing page")
             await self.page.close()
+            logger.success(f"Fetching '{url}' complete, closing browser")
             await browser.close()
+        logger.success(f"Fetching '{url}' complete, exiting puppeteer fetch.")
 
     async def main(self, **kwargs):
         await self.fetch_page(**kwargs)

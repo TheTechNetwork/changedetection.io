@@ -12,7 +12,7 @@
 #
 #
 
-from distutils.util import strtobool
+from changedetectionio.strtobool import strtobool
 from flask import Blueprint, request, make_response
 import os
 
@@ -84,7 +84,9 @@ def construct_blueprint(datastore: ChangeDetectionStore):
         # Tell Playwright to connect to Chrome and setup a new session via our stepper interface
         browsersteps_start_session['browserstepper'] = browser_steps.browsersteps_live_ui(
             playwright_browser=browsersteps_start_session['browser'],
-            proxy=proxy)
+            proxy=proxy,
+            start_url=datastore.data['watching'][watch_uuid].get('url')
+        )
 
         # For test
         #browsersteps_start_session['browserstepper'].action_goto_url(value="http://example.com?time="+str(time.time()))
@@ -167,11 +169,6 @@ def construct_blueprint(datastore: ChangeDetectionStore):
             step_n = int(request.form.get('step_n'))
             is_last_step = strtobool(request.form.get('is_last_step'))
 
-            if step_operation == 'Goto site':
-                step_operation = 'goto_url'
-                step_optional_value = datastore.data['watching'][uuid].get('url')
-                step_selector = None
-
             # @todo try.. accept.. nice errors not popups..
             try:
 
@@ -190,8 +187,10 @@ def construct_blueprint(datastore: ChangeDetectionStore):
             u = browsersteps_sessions[browsersteps_session_id]['browserstepper'].page.url
             if is_last_step and u:
                 (screenshot, xpath_data) = browsersteps_sessions[browsersteps_session_id]['browserstepper'].request_visualselector_data()
-                datastore.save_screenshot(watch_uuid=uuid, screenshot=screenshot)
-                datastore.save_xpath_data(watch_uuid=uuid, data=xpath_data)
+                watch = datastore.data['watching'].get(uuid)
+                if watch:
+                    watch.save_screenshot(screenshot=screenshot)
+                    watch.save_xpath_data(data=xpath_data)
 
 #        if not this_session.page:
 #            cleanup_playwright_session()

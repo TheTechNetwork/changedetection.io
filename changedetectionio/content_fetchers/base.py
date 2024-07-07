@@ -5,6 +5,40 @@ from loguru import logger
 from changedetectionio.content_fetchers import BrowserStepsStepException
 
 
+def manage_user_agent(headers, current_ua=''):
+    """
+    Basic setting of user-agent
+
+    NOTE!!!!!! The service that does the actual Chrome fetching should handle any anti-robot techniques
+    THERE ARE MANY WAYS THAT IT CAN BE DETECTED AS A ROBOT!!
+    This does not take care of
+    - Scraping of 'navigator' (platform, productSub, vendor, oscpu etc etc) browser object (navigator.appVersion) etc
+    - TCP/IP fingerprint JA3 etc
+    - Graphic rendering fingerprinting
+    - Your IP being obviously in a pool of bad actors
+    - Too many requests
+    - Scraping of SCH-UA browser replies (thanks google!!)
+    - Scraping of ServiceWorker, new window calls etc
+
+    See https://filipvitas.medium.com/how-to-set-user-agent-header-with-puppeteer-js-and-not-fail-28c7a02165da
+    Puppeteer requests https://github.com/dgtlmoon/pyppeteerstealth
+
+    :param page:
+    :param headers:
+    :return:
+    """
+    # Ask it what the user agent is, if its obviously ChromeHeadless, switch it to the default
+    ua_in_custom_headers = headers.get('User-Agent')
+    if ua_in_custom_headers:
+        return ua_in_custom_headers
+
+    if not ua_in_custom_headers and current_ua:
+        current_ua = current_ua.replace('HeadlessChrome', 'Chrome')
+        return current_ua
+
+    return None
+
+
 class Fetcher():
     browser_connection_is_custom = None
     browser_connection_url = None
@@ -30,10 +64,9 @@ class Fetcher():
     render_extract_delay = 0
 
     def __init__(self):
-        from pkg_resources import resource_string
-        # The code that scrapes elements and makes a list of elements/size/position to click on in the VisualSelector
-        self.xpath_element_js = resource_string(__name__, "res/xpath_element_scraper.js").decode('utf-8')
-        self.instock_data_js = resource_string(__name__, "res/stock-not-in-stock.js").decode('utf-8')
+        import importlib.resources
+        self.xpath_element_js = importlib.resources.read_text("changedetectionio.content_fetchers.res", 'xpath_element_scraper.js')
+        self.instock_data_js = importlib.resources.read_text("changedetectionio.content_fetchers.res", 'stock-not-in-stock.js')
 
     @abstractmethod
     def get_error(self):
@@ -78,24 +111,26 @@ class Fetcher():
 
     def browser_steps_get_valid_steps(self):
         if self.browser_steps is not None and len(self.browser_steps):
-            valid_steps = filter(
-                lambda s: (s['operation'] and len(s['operation']) and s['operation'] != 'Choose one' and s['operation'] != 'Goto site'),
-                self.browser_steps)
+            valid_steps = list(filter(
+                lambda s: (s['operation'] and len(s['operation']) and s['operation'] != 'Choose one'),
+                self.browser_steps))
+
+            # Just incase they selected Goto site by accident with older JS
+            if valid_steps and valid_steps[0]['operation'] == 'Goto site':
+                del(valid_steps[0])
 
             return valid_steps
 
         return None
 
-    def iterate_browser_steps(self):
+    def iterate_browser_steps(self, start_url=None):
         from changedetectionio.blueprint.browser_steps.browser_steps import steppable_browser_interface
         from playwright._impl._errors import TimeoutError, Error
-        from jinja2 import Environment
-        jinja2_env = Environment(extensions=['jinja2_time.TimeExtension'])
-
+        from changedetectionio.safe_jinja import render as jinja_render
         step_n = 0
 
         if self.browser_steps is not None and len(self.browser_steps):
-            interface = steppable_browser_interface()
+            interface = steppable_browser_interface(start_url=start_url)
             interface.page = self.page
             valid_steps = self.browser_steps_get_valid_steps()
 
@@ -109,9 +144,9 @@ class Fetcher():
                     selector = step['selector']
                     # Support for jinja2 template in step values, with date module added
                     if '{%' in step['optional_value'] or '{{' in step['optional_value']:
-                        optional_value = str(jinja2_env.from_string(step['optional_value']).render())
+                        optional_value = jinja_render(template_str=step['optional_value'])
                     if '{%' in step['selector'] or '{{' in step['selector']:
-                        selector = str(jinja2_env.from_string(step['selector']).render())
+                        selector = jinja_render(template_str=step['selector'])
 
                     getattr(interface, "call_action")(action_name=step['operation'],
                                                       selector=selector,

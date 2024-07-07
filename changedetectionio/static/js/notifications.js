@@ -13,29 +13,15 @@ $(document).ready(function() {
   $('#send-test-notification').click(function (e) {
     e.preventDefault();
 
-    // this can be global
-    var csrftoken = $('input[name=csrf_token]').val();
-    $.ajaxSetup({
-        beforeSend: function(xhr, settings) {
-            if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
-                xhr.setRequestHeader("X-CSRFToken", csrftoken)
-            }
-        }
-    })
-
     data = {
       notification_body: $('#notification_body').val(),
       notification_format: $('#notification_format').val(),
       notification_title: $('#notification_title').val(),
       notification_urls: $('.notification-urls').val(),
+      tags: $('#tags').val(),
       window_url: window.location.href,
     }
 
-
-    if (!data['notification_urls'].length) {
-      alert("Notification URL list is empty, cannot send test.")
-      return;
-    }
 
     $.ajax({
       type: "POST",
@@ -49,7 +35,7 @@ $(document).ready(function() {
       }
     }).done(function(data){
       console.log(data);
-      alert('Sent');
+      alert(data);
     }).fail(function(data){
       console.log(data);
       alert('There was an error communicating with the server.');
