@@ -6,8 +6,8 @@ import os
 import re
 import urllib3
 
-from . import difference_detection_processor
-from ..html_tools import PERL_STYLE_REGEX, cdata_in_document_to_text
+from changedetectionio.processors import difference_detection_processor
+from changedetectionio.html_tools import PERL_STYLE_REGEX, cdata_in_document_to_text
 from changedetectionio import html_tools, content_fetchers
 from changedetectionio.blueprint.price_data_follower import PRICE_DATA_TRACK_ACCEPT, PRICE_DATA_TRACK_REJECT
 from loguru import logger
@@ -16,11 +16,13 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 name = 'Webpage Text/HTML, JSON and PDF changes'
 description = 'Detects all text changes where possible'
+
 json_filter_prefixes = ['json:', 'jq:', 'jqraw:']
 
 class FilterNotFoundInResponse(ValueError):
-    def __init__(self, msg, screenshot=None):
+    def __init__(self, msg, screenshot=None, xpath_data=None):
         self.screenshot = screenshot
+        self.xpath_data = xpath_data
         ValueError.__init__(self, msg)
 
 
@@ -185,7 +187,7 @@ class perform_site_check(difference_detection_processor):
                                                                        append_pretty_line_formatting=not watch.is_source_type_url)
 
                     if not html_content.strip():
-                        raise FilterNotFoundInResponse(msg=include_filters_rule, screenshot=self.fetcher.screenshot)
+                        raise FilterNotFoundInResponse(msg=include_filters_rule, screenshot=self.fetcher.screenshot, xpath_data=self.fetcher.xpath_data)
 
                 if has_subtractive_selectors:
                     html_content = html_tools.element_removal(subtractive_selectors, html_content)
@@ -216,7 +218,7 @@ class perform_site_check(difference_detection_processor):
         # Rewrite's the processing text based on only what diff result they want to see
         if watch.has_special_diff_filter_options_set() and len(watch.history.keys()):
             # Now the content comes from the diff-parser and not the returned HTTP traffic, so could be some differences
-            from .. import diff
+            from changedetectionio import diff
             # needs to not include (added) etc or it may get used twice
             # Replace the processed text with the preferred result
             rendered_diff = diff.render_diff(previous_version_file_contents=watch.get_last_fetched_text_before_filters(),
@@ -243,9 +245,10 @@ class perform_site_check(difference_detection_processor):
         if not is_json and not empty_pages_are_a_change and len(stripped_text_from_html.strip()) == 0:
             raise content_fetchers.exceptions.ReplyWithContentButNoText(url=url,
                                                             status_code=self.fetcher.get_last_status_code(),
-                                                            screenshot=screenshot,
+                                                            screenshot=self.fetcher.screenshot,
                                                             has_filters=has_filter_rule,
-                                                            html_content=html_content
+                                                            html_content=html_content,
+                                                            xpath_data=self.fetcher.xpath_data
                                                             )
 
         # We rely on the actual text in the html output.. many sites have random script vars etc,
@@ -334,12 +337,6 @@ class perform_site_check(difference_detection_processor):
         # Looks like something changed, but did it match all the rules?
         if blocked:
             changed_detected = False
-
-        # Extract title as title
-        if is_html:
-            if self.datastore.data['settings']['application'].get('extract_title_as_title') or watch['extract_title_as_title']:
-                if not watch['title'] or not len(watch['title']):
-                    update_obj['title'] = html_tools.extract_element(find='title', html_content=self.fetcher.content)
 
         logger.debug(f"Watch UUID {watch.get('uuid')} content check - Previous MD5: {watch.get('previous_md5')}, Fetched MD5 {fetched_md5}")
 

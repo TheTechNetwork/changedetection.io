@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import time
 from flask import url_for
@@ -17,7 +17,7 @@ def test_inscriptus():
     assert stripped_text_from_html == 'test!\nok man'
 
 
-def test_check_basic_change_detection_functionality(client, live_server):
+def test_check_basic_change_detection_functionality(client, live_server, measure_memory_usage):
     set_original_response()
     live_server_setup(live_server)
 
@@ -149,6 +149,11 @@ def test_check_basic_change_detection_functionality(client, live_server):
     wait_for_all_checks(client)
     res = client.get(url_for("index"))
     assert b'preview/' in res.data
+
+
+    # Check the 'get latest snapshot works'
+    res = client.get(url_for("watch_get_latest_html", uuid=uuid))
+    assert b'<head><title>head title</title></head>' in res.data
 
     #
     # Cleanup everything

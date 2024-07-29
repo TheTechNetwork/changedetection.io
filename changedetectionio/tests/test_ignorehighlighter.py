@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import time
 from flask import url_for
@@ -23,7 +23,7 @@ def set_original_ignore_response():
         f.write(test_return_data)
 
 
-def test_highlight_ignore(client, live_server):
+def test_highlight_ignore(client, live_server, measure_memory_usage):
     live_server_setup(live_server)
     set_original_ignore_response()
     test_url = url_for('test_endpoint', _external=True)

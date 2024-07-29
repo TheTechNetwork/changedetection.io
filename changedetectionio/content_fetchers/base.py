@@ -65,8 +65,8 @@ class Fetcher():
 
     def __init__(self):
         import importlib.resources
-        self.xpath_element_js = importlib.resources.read_text("changedetectionio.content_fetchers.res", 'xpath_element_scraper.js')
-        self.instock_data_js = importlib.resources.read_text("changedetectionio.content_fetchers.res", 'stock-not-in-stock.js')
+        self.xpath_element_js = importlib.resources.files("changedetectionio.content_fetchers.res").joinpath('xpath_element_scraper.js').read_text()
+        self.instock_data_js = importlib.resources.files("changedetectionio.content_fetchers.res").joinpath('stock-not-in-stock.js').read_text()
 
     @abstractmethod
     def get_error(self):
@@ -81,7 +81,8 @@ class Fetcher():
             request_method,
             ignore_status_codes=False,
             current_include_filters=None,
-            is_binary=False):
+            is_binary=False,
+            empty_pages_are_a_change=False):
         # Should set self.error, self.status_code and self.content
         pass
 
@@ -95,6 +96,9 @@ class Fetcher():
 
     @abstractmethod
     def screenshot_step(self, step_n):
+        if self.browser_steps_screenshot_path and not os.path.isdir(self.browser_steps_screenshot_path):
+            logger.debug(f"> Creating data dir {self.browser_steps_screenshot_path}")
+            os.mkdir(self.browser_steps_screenshot_path)
         return None
 
     @abstractmethod
@@ -168,5 +172,8 @@ class Fetcher():
                 if os.path.isfile(f):
                     os.unlink(f)
 
-    def save_step_html(self, param):
+    def save_step_html(self, step_n):
+        if self.browser_steps_screenshot_path and not os.path.isdir(self.browser_steps_screenshot_path):
+            logger.debug(f"> Creating data dir {self.browser_steps_screenshot_path}")
+            os.mkdir(self.browser_steps_screenshot_path)
         pass

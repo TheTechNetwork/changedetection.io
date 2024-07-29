@@ -26,6 +26,9 @@
         <ul>
             <li class="tab" id=""><a href="#general">General</a></li>
             <li class="tab"><a href="#filters-and-triggers">Filters &amp; Triggers</a></li>
+            {% if extra_tab_content %}
+            <li class="tab"><a href="#extras_tab">{{ extra_tab_content }}</a></li>
+            {% endif %}
             <li class="tab"><a href="#notifications">Notifications</a></li>
         </ul>
     </div>
@@ -97,6 +100,12 @@ nav
 
             </div>
 
+        {# rendered sub Template #}
+        {% if extra_form_content %}
+            <div class="tab-pane-inner" id="extras_tab">
+            {{ extra_form_content|safe }}
+            </div>
+        {% endif %}
             <div class="tab-pane-inner" id="notifications">
                 <fieldset>
                     <div  class="pure-control-group inline-radio">
@@ -119,7 +128,7 @@ nav
                         {% endif %}
                         <a href="#notifications" id="notification-setting-reset-to-default" class="pure-button button-xsmall" style="right: 20px; top: 20px; position: absolute; background-color: #5f42dd; border-radius: 4px; font-size: 70%; color: #fff">Use system defaults</a>
 
-                        {{ render_common_settings_form(form, emailprefix, settings_application) }}
+                        {{ render_common_settings_form(form, emailprefix, settings_application, extra_notification_token_placeholder_info) }}
                     </div>
                 </fieldset>
             </div>

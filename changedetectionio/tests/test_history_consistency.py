@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import time
 import os
@@ -8,7 +8,7 @@ from flask import url_for
 from .util import live_server_setup, wait_for_all_checks
 from urllib.parse import urlparse, parse_qs
 
-def test_consistent_history(client, live_server):
+def test_consistent_history(client, live_server, measure_memory_usage):
     live_server_setup(live_server)
 
     r = range(1, 30)
@@ -74,3 +74,8 @@ def test_consistent_history(client, live_server):
 
 
         assert len(files_in_watch_dir) == 3, "Should be just three files in the dir, html.br snapshot, history.txt and the extracted text snapshot"
+
+
+    json_db_file = os.path.join(live_server.app.config['DATASTORE'].datastore_path, 'url-watches.json')
+    with open(json_db_file, 'r') as f:
+        assert '"default"' not in f.read(), "'default' probably shouldnt be here, it came from when the 'default' Watch vars were accidently being saved"
