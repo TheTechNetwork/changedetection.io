@@ -1,30 +1,30 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import time
 from flask import url_for
 from urllib.request import urlopen
 from .util import set_original_response, set_modified_response, live_server_setup, wait_for_all_checks
+import os
 
-sleep_time_for_fetch_thread = 3
-
-
-
-def test_check_extract_text_from_diff(client, live_server):
+def test_check_extract_text_from_diff(client, live_server, measure_memory_usage, datastore_path):
     import time
-    with open("test-datastore/endpoint-content.txt", "w") as f:
+    with open(os.path.join(datastore_path, "endpoint-content.txt"), "w") as f:
         f.write("Now it's {} seconds since epoch, time flies!".format(str(time.time())))
 
-    live_server_setup(live_server)
+   #  live_server_setup(live_server) # Setup on conftest per function
 
     # Add our URL to the import page
     res = client.post(
-        url_for("import_page"),
+        url_for("imports.import_page"),
         data={"urls": url_for('test_endpoint', _external=True)},
         follow_redirects=True
     )
 
     assert b"1 Imported" in res.data
     wait_for_all_checks(client)
+    res = client.get(url_for("ui.ui_diff.diff_history_page_extract_GET", uuid="first"))
+    assert res.status_code == 200
+    assert b'extract_regex' in res.data
 
     # Load in 5 different numbers/changes
     last_date=""
@@ -33,20 +33,22 @@ def test_check_extract_text_from_diff(client, live_server):
         # Give the thread time to pick it up
         print("Bumping snapshot and checking.. ", n)
         last_date = str(time.time())
-        with open("test-datastore/endpoint-content.txt", "w") as f:
+        with open(os.path.join(datastore_path, "endpoint-content.txt"), "w") as f:
             f.write("Now it's {} seconds since epoch, time flies!".format(last_date))
 
-        client.get(url_for("form_watch_checknow"), follow_redirects=True)
+        client.post(url_for("ui.form_watch_checknow"), follow_redirects=True)
         wait_for_all_checks(client)
 
+
+
     res = client.post(
-        url_for("diff_history_page", uuid="first"),
+        url_for("ui.ui_diff.diff_history_page_extract_POST", uuid="first"),
         data={"extract_regex": "Now it's ([0-9\.]+)",
               "extract_submit_button": "Extract as CSV"},
         follow_redirects=False
     )
 
-    assert b'Nothing matches that RegEx' not in res.data
+    assert b'No matches found while scanning all of the watch history for that RegEx.' not in res.data
     assert res.content_type == 'text/csv'
 
     # Read the csv reply as stringio

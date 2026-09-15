@@ -1,14 +1,14 @@
 $(function () {
     /* add container before each proxy location to show status */
-
-    var option_li = $('.fetch-backend-proxy li').filter(function() {
-        return $("input",this)[0].value.length >0;
-    });
-
-    //var option_li = $('.fetch-backend-proxy li');
     var isActive = false;
-    $(option_li).prepend('<div class="proxy-status"></div>');
-    $(option_li).append('<div class="proxy-timing"></div><div class="proxy-check-details"></div>');
+
+    function setup_html_widget() {
+        var option_li = $('.fetch-backend-proxy li').filter(function () {
+            return $("input", this)[0].value.length > 0;
+        });
+        $(option_li).prepend('<div class="proxy-status"></div>');
+        $(option_li).append('<div class="proxy-timing"></div><div class="proxy-check-details"></div>');
+    }
 
     function set_proxy_check_status(proxy_key, state) {
         // select input by value name
@@ -59,15 +59,21 @@ $(function () {
     }
 
     $('#check-all-proxies').click(function (e) {
+
         e.preventDefault()
-        $('body').addClass('proxy-check-active');
+
+        if (!$('body').hasClass('proxy-check-active')) {
+            setup_html_widget();
+            $('body').addClass('proxy-check-active');
+        }
+
         $('.proxy-check-details').html('');
         $('.proxy-status').html('<span class="spinner"></span>').fadeIn();
         $('.proxy-timing').html('');
 
         // Request start, needs CSRF?
         $.ajax({
-            type: "GET",
+            type: "POST",
             url: recheck_proxy_start_url,
         }).done(function (data) {
             $.each(data, function (proxy_key, state) {
@@ -78,7 +84,7 @@ $(function () {
 
         }).fail(function (data) {
             console.log(data);
-            alert('There was an error communicating with the server.');
+            alert(i18nT('serverCommError', 'There was an error communicating with the server.'));
         });
 
     });

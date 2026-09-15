@@ -1,11 +1,13 @@
-## Web Site Change Detection, Restock monitoring and notifications.
+# Detect Website Changes Automatically — Monitor Web Page Changes in Real Time
 
-**_Detect website content changes and perform meaningful actions - trigger notifications via Discord, Email, Slack, Telegram, API calls and many more._**
+Monitor websites for updates — get notified via Discord, Email, Slack, Telegram, Webhook and many more.
 
-_Live your data-life pro-actively._ 
+**Detect web page content changes and get instant alerts.**  
+
+Ideal for monitoring price changes, content edits, conditional changes and more.
 
 
-[<img src="https://raw.githubusercontent.com/dgtlmoon/changedetection.io/master/docs/screenshot.png" style="max-width:100%;" alt="Self-hosted web site page change monitoring"  title="Self-hosted web site page change monitoring"  />](https://changedetection.io?src=github)
+[<img src="https://raw.githubusercontent.com/dgtlmoon/changedetection.io/master/docs/screenshot.png" style="max-width:100%;" alt="Web site page change monitoring"  title="Web site page change monitoring"  />](https://changedetection.io?src=github)
 
 [![Release Version][release-shield]][release-link] [![Docker Pulls][docker-pulls]][docker-link] [![License][license-shield]](LICENSE.md)
 
@@ -13,11 +15,26 @@ _Live your data-life pro-actively._
 
 [**Get started with website page change monitoring straight away. Don't have time? Try our $8.99/month subscription, use our proxies and support!**](https://changedetection.io) , _half the price of other website change monitoring services!_
 
+
 - Chrome browser included.
 - Nothing to install, access via browser login after signup.
 - Super fast, no registration needed setup.
 - Get started watching and receiving website change notifications straight away.
 - See our [tutorials and how-to page for more inspiration](https://changedetection.io/tutorials) 
+
+## AI-powered website change detection — smart alerts and plain-language summaries
+
+Stop drowning in noise. Connect any LLM (OpenAI, Gemini, Anthropic, Ollama and more) and go from _"something changed"_ to _"only the thing you care about changed"_.
+
+**AI change detection rules** — write a plain-English intent once: _"notify me only when the price drops below $50"_, _"alert me when the item comes back in stock"_, _"ignore navigation and footer changes"_. The AI evaluates every detected diff against your intent and silently suppresses everything irrelevant. Fewer false positives, zero noise.
+
+**AI change summaries** — instead of staring at a raw diff, your notification reads _"Price dropped from $89.99 to $67.00"_ or _"3 new products added to the listing"_. Works globally or per-watch, with full control over the prompt.
+
+Works with any model you already pay for — GPT-4o-mini and Gemini Flash handle this well at fractions of a cent per check. Or run it entirely locally with **Ollama**, **vLLM**, **LM Studio**, or any **OpenAI-compatible self-hosted endpoint** — pick the *OpenAI-compatible (vLLM, LM Studio, llama.cpp)* option in the provider dropdown and point it at your server's `/v1` URL. Powered by [LiteLLM](https://github.com/BerriAI/litellm), giving you seamless access to [100+ supported providers and models](https://docs.litellm.ai/docs/providers).
+
+[<img src="./docs/LLM-change-summary.jpeg" style="max-width:100%;" alt="AI-powered website change detection — plain language change summaries and smart alert rules"  title="AI website change detection with LLM change summaries and intelligent alert filtering" />](https://changedetection.io?src=github)
+
+_Note: Available in our subscription/hosted service from June 2026_
 
 ### Target specific parts of the webpage using the Visual Selector tool.
 
@@ -40,6 +57,20 @@ Using the **Browser Steps** configuration, add basic steps before performing cha
 
 After **Browser Steps** have been run, then visit the **Visual Selector** tab to refine the content you're interested in.
 Requires Playwright to be enabled.
+
+### Awesome restock and price change notifications
+
+Enable the _"Re-stock & Price detection for single product pages"_ option to activate the best way to monitor product pricing, this will extract any meta-data in the HTML page and give you many options to follow the pricing of the product.
+
+Easily organise and monitor prices for products from the dashboard, get alerts and notifications when the price of a product changes or comes back in stock again!
+
+[<img src="docs/restock-overview.png" style="max-width:100%;" alt="Easily keep an eye on product price changes directly from the UI"  title="Easily keep an eye on product price changes directly from the UI" />](https://changedetection.io?src=github)
+
+Set price change notification parameters, upper and lower price, price change percentage and more.
+Always know when a product for sale drops in price.
+
+[<img src="docs/restock-settings.png" style="max-width:100%;" alt="Set upper lower and percentage price change notification values"  title="Set upper lower and percentage price change notification values" />](https://changedetection.io?src=github)
+
 
 
 ### Example use cases
@@ -75,7 +106,7 @@ _Need an actual Chrome runner with Javascript support? We support fetching via W
 #### Key Features
 
 - Lots of trigger filters, such as "Trigger on text", "Remove text by selector", "Ignore text", "Extract text", also using regular-expressions!
-- Target elements with xPath(1.0) and CSS Selectors, Easily monitor complex JSON with JSONPath or jq
+- Target elements with xPath 1 and xPath 2, CSS Selectors, Easily monitor complex JSON with JSONPath or jq
 - Switch between fast non-JS and Chrome JS based "fetchers"
 - Track changes in PDF files (Monitor text changed in the PDF, Also monitor PDF filesize and checksums)
 - Easily specify how often a site should be checked
@@ -85,11 +116,24 @@ _Need an actual Chrome runner with Javascript support? We support fetching via W
 - Configurable [proxy per watch](https://github.com/dgtlmoon/changedetection.io/wiki/Proxy-configuration)
 - Send a screenshot with the notification when a change is detected in the web page
 
-We [recommend and use Bright Data](https://brightdata.grsm.io/n0r16zf7eivq) global proxy services, Bright Data will match any first deposit up to $100 using our signup link.
-
-[Oxylabs](https://oxylabs.go2cloud.org/SH2d) is also an excellent proxy provider and well worth using, they offer Residental, ISP, Rotating and many other proxy types to suit your project. 
+We [recommend and use Bright Data](https://brightdata.grsm.io/n0r16zf7eivq) global proxy services, Bright Data will match any first deposit up to $150 using our signup link.
 
 Please :star: star :star: this project and help it grow! https://github.com/dgtlmoon/changedetection.io/
+
+### Conditional web page changes
+
+Easily [configure conditional actions](https://changedetection.io/tutorial/conditional-actions-web-page-changes), for example, only trigger when a price is above or below a preset amount, or [when a web page includes (or does not include) a keyword](https://changedetection.io/tutorial/how-monitor-keywords-any-website)
+
+<img src="./docs/web-page-change-conditions.png" style="max-width:80%;" alt="Conditional web page changes"  title="Conditional web page changes"  />
+
+### Schedule web page watches in any timezone, limit by day of week and time.
+
+Easily set a re-check schedule, for example you could limit the web page change detection to only operate during business hours.
+Or perhaps based on a foreign timezone (for example, you want to check for the latest news-headlines in a foreign country at 0900 AM),
+
+<img src="./docs/scheduler.png" style="max-width:80%;" alt="How to monitor web page changes according to a schedule"  title="How to monitor web page changes according to a schedule"  />
+
+Includes quick short-cut buttons to setup a schedule for **business hours only**, or **weekends**.
 
 ### We have a Chrome extension!
 
@@ -97,7 +141,7 @@ Easily add the current web page to your changedetection.io tool, simply install 
 
 [<img src="./docs/chrome-extension-screenshot.png" style="max-width:80%;" alt="Chrome Extension to easily add the current web-page to detect a change."  title="Chrome Extension to easily add the current web-page to detect a change."  />](https://chromewebstore.google.com/detail/changedetectionio-website/kefcfmgmlhmankjmnbijimhofdjekbop)
 
-[Goto the Chrome Webstore to download the extension.](https://chromewebstore.google.com/detail/changedetectionio-website/kefcfmgmlhmankjmnbijimhofdjekbop)
+[Goto the Chrome Webstore to download the extension.](https://chromewebstore.google.com/detail/changedetectionio-website/kefcfmgmlhmankjmnbijimhofdjekbop) ( Or check out the [GitHub repo](https://github.com/dgtlmoon/changedetection.io-browser-extension) ) 
 
 ## Installation
 
@@ -153,6 +197,9 @@ docker compose pull && docker compose up -d
 
 See the wiki for more information https://github.com/dgtlmoon/changedetection.io/wiki
 
+## Different browser viewport sizes (mobile, desktop etc)
+
+If you are using the recommended `sockpuppetbrowser` (which is in the docker-compose.yml as a setting to be uncommented) you can easily set different viewport sizes for your web page change detection, [see more information here about setting up different viewport sizes](https://github.com/dgtlmoon/sockpuppetbrowser?tab=readme-ov-file#setting-viewport-size).
 
 ## Filters
 
@@ -250,7 +297,10 @@ Excel import is recommended - that way you can better organise tags/groups of we
 
 ## API Support
 
-Supports managing the website watch list [via our API](https://changedetection.io/docs/api_v1/index.html)
+Full REST API for programmatic management of watches, tags, notifications and more. 
+
+- **[Interactive API Documentation](https://changedetection.io/docs/api_v1/index.html)** - Complete API reference with live testing
+- **[OpenAPI Specification](docs/api-spec.yaml)** - Generate SDKs for any programming language
 
 ## Support us
 
@@ -272,6 +322,28 @@ I offer commercial support, this software is depended on by network security, ae
 [release-link]: https://github.com/dgtlmoon/changedetection.io/releases
 [docker-link]: https://hub.docker.com/r/dgtlmoon/changedetection.io
 
+
+## Disclaimer
+
+**This software is provided "as-is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement. In no event shall the authors or copyright holders be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.**
+
+### Website content monitoring
+
+You are solely responsible for ensuring that your use of this software complies with the terms of service, `robots.txt` directives, access policies, and all applicable laws of any website or service you choose to monitor. The authors and contributors of this software accept no liability whatsoever for how you choose to use it or for any consequences arising from that use.
+
+### AI / LLM features
+
+If you choose to enable AI / LLM features, content detected on monitored websites — including page diffs and extracted text — will be transmitted to a third-party AI provider of your choosing, outside of this installation. You are solely responsible for:
+
+- Ensuring such transmission is permitted by the terms of service of every website you monitor.
+- Compliance with all applicable data-protection and privacy laws (including but not limited to GDPR) with respect to any personal data that may appear in monitored content.
+- All API costs and charges levied by your chosen AI provider. This software has no visibility into or control over those charges.
+- Any consequences arising from acting on AI-generated output.
+
+**AI and LLM models are known to hallucinate** — producing plausible-sounding but factually incorrect, incomplete, or entirely fabricated output with apparent confidence. By design, LLMs may also omit or silently truncate relevant information during summarisation. **AI output must never be relied upon as complete or accurate.**
+
+By using this software, and in particular any AI / LLM features, you personally indemnify and hold harmless the author(s), contributor(s), and any associated parties from and against any and all claims, damages, losses, costs, and expenses (including reasonable legal fees) arising out of or in connection with your use of this software.
+
 ## Third-party licenses
 
 changedetectionio.html_tools.elementpath_tostring: Copyright (c), 2018-2021, SISSA (Scuola Internazionale Superiore di Studi Avanzati), Licensed under [MIT license](https://github.com/sissaschool/elementpath/blob/master/LICENSE)
@@ -279,5 +351,7 @@ changedetectionio.html_tools.elementpath_tostring: Copyright (c), 2018-2021, SIS
 ## Contributors
 
 Recognition of fantastic contributors to the project
+
+<sub>Developer note: see [translation guide](changedetectionio/translations/README.md) for i18n template patterns and workflow.</sub>
 
 - Constantin Hong https://github.com/Constantin1489

@@ -1,8 +1,41 @@
 import os
 from abc import abstractmethod
 from loguru import logger
+from pydantic import BaseModel
 
 from changedetectionio.content_fetchers import BrowserStepsStepException
+from changedetectionio.strtobool import strtobool
+
+
+class FetcherCapabilities(BaseModel):
+    """Typed view of what a content fetcher can do.
+
+    Single source of truth for the fetcher capability flags. The flags live as
+    class attributes on each fetcher (supports_browser_steps etc); build a
+    validated instance from a fetcher class with FetcherCapabilities.from_fetcher(),
+    and call .model_dump() where a plain dict is expected (templates, plugin API).
+    """
+    supports_browser_steps: bool = False       # Can execute browser automation steps
+    supports_screenshots: bool = False         # Can capture page screenshots
+    supports_xpath_element_data: bool = False  # Can extract xpath element positions for visual selector
+
+    @classmethod
+    def from_fetcher(cls, fetcher_class):
+        """Build capabilities from a fetcher class (or None -> all False)."""
+        return cls(**{
+            name: getattr(fetcher_class, name, False)
+            for name in cls.model_fields
+        })
+
+
+def get_playwright_bypass_csp():
+    """Return whether Playwright-compatible browser contexts should bypass CSP.
+
+    Bypassing CSP remains enabled by default for backward compatibility. Some
+    remote CDP implementations do not support ``Page.setBypassCSP``; operators
+    can disable the option by setting ``PLAYWRIGHT_BYPASS_CSP=false``.
+    """
+    return strtobool(os.getenv('PLAYWRIGHT_BYPASS_CSP', 'true'))
 
 
 def manage_user_agent(headers, current_ua=''):
@@ -38,8 +71,11 @@ def manage_user_agent(headers, current_ua=''):
 
     return None
 
-
 class Fetcher():
+    # The fully-resolved concrete backend name this fetcher was chosen as
+    # (e.g. 'html_requests', 'html_webdriver'). Set by resolve_content_fetcher()
+    # so downstream consumers don't have to re-derive it from the class name.
+    backend_name = None
     browser_connection_is_custom = None
     browser_connection_url = None
     browser_steps = None
@@ -48,10 +84,13 @@ class Fetcher():
     error = None
     fetcher_description = "No description"
     headers = {}
+    favicon_blob = None
     instock_data = None
     instock_data_js = ""
+    screenshot_format = None
     status_code = None
     webdriver_js_execute_code = None
+    worker_id = None
     xpath_data = None
     xpath_element_js = ""
 
@@ -63,30 +102,84 @@ class Fetcher():
     # Time ONTOP of the system defined env minimum time
     render_extract_delay = 0
 
-    def __init__(self):
-        import importlib.resources
-        self.xpath_element_js = importlib.resources.read_text("changedetectionio.content_fetchers.res", 'xpath_element_scraper.js')
-        self.instock_data_js = importlib.resources.read_text("changedetectionio.content_fetchers.res", 'stock-not-in-stock.js')
+    # Fetcher capability flags - subclasses should override these
+    # These indicate what features the fetcher supports
+    supports_browser_steps = False      # Can execute browser automation steps
+    supports_screenshots = False        # Can capture page screenshots
+    supports_xpath_element_data = False # Can extract xpath element positions/data for visual selector
+
+    # Screenshot element locking - prevents layout shifts during screenshot capture
+    # Only needed for visual comparison (image_ssim_diff processor)
+    # Locks element dimensions in the first viewport to prevent headers/ads from resizing
+    lock_viewport_elements = False      # Default: disabled for performance
+
+    def __init__(self, **kwargs):
+        if kwargs and 'screenshot_format' in kwargs:
+            self.screenshot_format = kwargs.get('screenshot_format')
+
+        # Allow lock_viewport_elements to be set via kwargs
+        if kwargs and 'lock_viewport_elements' in kwargs:
+            self.lock_viewport_elements = kwargs.get('lock_viewport_elements')
+
+        # Which async worker is driving this fetch, subclasses use it to keep per-worker browser
+        # state (profile dirs etc) apart, stays None when we're not called from a worker
+        if kwargs and 'worker_id' in kwargs:
+            self.worker_id = kwargs.get('worker_id')
+
+
+    @classmethod
+    def get_status_icon_data(cls):
+        """Return data for status icon to display in the watch overview.
+
+        This method can be overridden by subclasses to provide custom status icons.
+
+        Returns:
+            dict or None: Dictionary with icon data:
+                {
+                    'filename': 'icon-name.svg',  # Icon filename
+                    'alt': 'Alt text',            # Alt attribute
+                    'title': 'Tooltip text',      # Title attribute
+                    'style': 'height: 1em;'       # Optional inline CSS
+                }
+                Or None if no icon
+        """
+        return None
+
+    def clear_content(self):
+        """
+        Explicitly clear all content from memory to free up heap space.
+        Call this after content has been saved to disk.
+        """
+        self.content = None
+        if hasattr(self, 'raw_content'):
+            self.raw_content = None
+        self.screenshot = None
+        self.xpath_data = None
+        # Keep headers and status_code as they're small
 
     @abstractmethod
     def get_error(self):
         return self.error
 
     @abstractmethod
-    def run(self,
-            url,
-            timeout,
-            request_headers,
-            request_body,
-            request_method,
-            ignore_status_codes=False,
-            current_include_filters=None,
-            is_binary=False):
+    async def run(self,
+                  fetch_favicon=True,
+                  current_include_filters=None,
+                  empty_pages_are_a_change=False,
+                  ignore_status_codes=False,
+                  is_binary=False,
+                  request_body=None,
+                  request_headers=None,
+                  request_method=None,
+                  timeout=None,
+                  url=None,
+                  watch_uuid=None,
+                  ):
         # Should set self.error, self.status_code and self.content
         pass
 
     @abstractmethod
-    def quit(self):
+    async def quit(self, watch=None):
         return
 
     @abstractmethod
@@ -95,6 +188,9 @@ class Fetcher():
 
     @abstractmethod
     def screenshot_step(self, step_n):
+        if self.browser_steps_screenshot_path and not os.path.isdir(self.browser_steps_screenshot_path):
+            logger.debug(f"> Creating data dir {self.browser_steps_screenshot_path}")
+            os.mkdir(self.browser_steps_screenshot_path)
         return None
 
     @abstractmethod
@@ -109,36 +205,23 @@ class Fetcher():
         """
         return {k.lower(): v for k, v in self.headers.items()}
 
-    def browser_steps_get_valid_steps(self):
-        if self.browser_steps is not None and len(self.browser_steps):
-            valid_steps = list(filter(
-                lambda s: (s['operation'] and len(s['operation']) and s['operation'] != 'Choose one'),
-                self.browser_steps))
-
-            # Just incase they selected Goto site by accident with older JS
-            if valid_steps and valid_steps[0]['operation'] == 'Goto site':
-                del(valid_steps[0])
-
-            return valid_steps
-
-        return None
-
-    def iterate_browser_steps(self, start_url=None):
-        from changedetectionio.blueprint.browser_steps.browser_steps import steppable_browser_interface
+    async def iterate_browser_steps(self, start_url=None):
+        from changedetectionio.browser_steps.browser_steps import steppable_browser_interface, browser_steps_get_valid_steps
         from playwright._impl._errors import TimeoutError, Error
-        from changedetectionio.safe_jinja import render as jinja_render
+        from changedetectionio.jinja2_custom import render as jinja_render
         step_n = 0
 
-        if self.browser_steps is not None and len(self.browser_steps):
+        if self.browser_steps:
             interface = steppable_browser_interface(start_url=start_url)
             interface.page = self.page
-            valid_steps = self.browser_steps_get_valid_steps()
+            valid_steps = browser_steps_get_valid_steps(self.browser_steps)
 
             for step in valid_steps:
                 step_n += 1
                 logger.debug(f">> Iterating check - browser Step n {step_n} - {step['operation']}...")
-                self.screenshot_step("before-" + str(step_n))
-                self.save_step_html("before-" + str(step_n))
+                await self.screenshot_step("before-" + str(step_n))
+                await self.save_step_html("before-" + str(step_n))
+
                 try:
                     optional_value = step['optional_value']
                     selector = step['selector']
@@ -148,12 +231,16 @@ class Fetcher():
                     if '{%' in step['selector'] or '{{' in step['selector']:
                         selector = jinja_render(template_str=step['selector'])
 
-                    getattr(interface, "call_action")(action_name=step['operation'],
+                    await getattr(interface, "call_action")(action_name=step['operation'],
                                                       selector=selector,
                                                       optional_value=optional_value)
-                    self.screenshot_step(step_n)
-                    self.save_step_html(step_n)
-                except (Error, TimeoutError) as e:
+                    await self.screenshot_step(step_n)
+                    await self.save_step_html(step_n)
+                except (Error, TimeoutError, ValueError) as e:
+                    # ValueError is what validate_fetch_url_async() raises when a step's URL is
+                    # refused (file://, private IP, bad scheme) - report it against the offending
+                    # step number like any other step failure, rather than failing the whole watch
+                    # with an opaque error.
                     logger.debug(str(e))
                     # Stop processing here
                     raise BrowserStepsStepException(step_n=step_n, original_e=e)
@@ -168,5 +255,8 @@ class Fetcher():
                 if os.path.isfile(f):
                     os.unlink(f)
 
-    def save_step_html(self, param):
+    def save_step_html(self, step_n):
+        if self.browser_steps_screenshot_path and not os.path.isdir(self.browser_steps_screenshot_path):
+            logger.debug(f"> Creating data dir {self.browser_steps_screenshot_path}")
+            os.mkdir(self.browser_steps_screenshot_path)
         pass

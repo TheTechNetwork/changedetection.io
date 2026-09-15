@@ -3,14 +3,33 @@
  * Toggles theme between light and dark mode.
  */
 $(document).ready(function () {
-    const button = document.getElementById("toggle-light-mode");
 
-    button.onclick = () => {
-        const htmlElement = document.getElementsByTagName("html");
-        const isDarkMode = htmlElement[0].dataset.darkmode === "true";
-        htmlElement[0].dataset.darkmode = !isDarkMode;
-        setCookieValue(!isDarkMode);
-    };
+    $(".toggle-light-mode").on("click", function () {
+        const isDark = $("html").attr("data-darkmode") === "true";
+        $("html").attr("data-darkmode", !isDark);
+        setCookieValue(!isDark);
+    });
+
+    // AI mode toggle — persisted in localStorage
+    (function initAiMode() {
+        const enabled = localStorage.getItem('ai-mode') === 'true';
+        $("html").attr("data-ai-mode", enabled ? "true" : "false");
+    })();
+
+    $(".toggle-ai-mode").on("click", function () {
+        if ($(this).data("llm-configured") !== true && $(this).data("llm-configured") !== "true") {
+            document.getElementById("llm-not-configured-modal").showModal();
+            return;
+        }
+        const current = $("html").attr("data-ai-mode") === "true";
+        const next = !current;
+        $("html").attr("data-ai-mode", next ? "true" : "false");
+        localStorage.setItem('ai-mode', next ? 'true' : 'false');
+    });
+
+    $("#close-llm-not-configured-modal").on("click", function () {
+        document.getElementById("llm-not-configured-modal").close();
+    });
 
     const setCookieValue = (value) => {
         document.cookie = `css_dark_mode=${value};max-age=31536000;path=/`
@@ -49,4 +68,9 @@ $(document).ready(function () {
         $("#overlay").toggleClass('visible');
         heartpath.style.fill = document.getElementById("overlay").classList.contains("visible") ? '#ff0000' : 'var(--color-background)';
     });
+
+    setInterval(function () {
+        $('body').toggleClass('spinner-active', $.active > 0);
+    }, 2000);
+
 });

@@ -1,10 +1,10 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 # run from dir above changedetectionio/ dir
 # python3 -m unittest changedetectionio.tests.unit.test_jinja2_security
 
 import unittest
-from changedetectionio import safe_jinja
+from changedetectionio import jinja2_custom as safe_jinja
 
 
 # mostly
@@ -50,6 +50,10 @@ class TestJinja2SSTI(unittest.TestCase):
         ]
         for attempt in attempt_list:
             self.assertEqual(len(safe_jinja.render(attempt)), 0, f"string test '{attempt}' is correctly empty")
+
+    def test_jinja2_escaped_html(self):
+        x = safe_jinja.render_fully_escaped('woo <a href="https://google.com">dfdfd</a>')
+        self.assertEqual(x, "woo &lt;a href=&#34;https://google.com&#34;&gt;dfdfd&lt;/a&gt;")
 
 
 

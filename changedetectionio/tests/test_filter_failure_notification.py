@@ -1,11 +1,11 @@
 import os
 import time
 from flask import url_for
-from .util import set_original_response, live_server_setup, extract_UUID_from_client, wait_for_all_checks
-from changedetectionio.model import App
+from .util import set_original_response, wait_for_all_checks, wait_for_notification_endpoint_output, delete_all_watches
+from ..notification import valid_notification_formats
 
 
-def set_response_with_filter():
+def set_response_with_filter(datastore_path):
     test_return_data = """<html>
        <body>
      Some initial text<br>
@@ -17,144 +17,189 @@ def set_response_with_filter():
      </html>
     """
 
-    with open("test-datastore/endpoint-content.txt", "w") as f:
+    with open(os.path.join(datastore_path, "endpoint-content.txt"), "w") as f:
         f.write(test_return_data)
     return None
 
-def run_filter_test(client, live_server, content_filter):
+def run_filter_test(client, live_server, content_filter, app_notification_format, datastore_path):
 
     # Response WITHOUT the filter ID element
-    set_original_response()
+    set_original_response(datastore_path=datastore_path)
+    live_server.app.config['DATASTORE'].data['settings']['application']['notification_format'] = app_notification_format
 
-    # cleanup for the next
-    client.get(
-        url_for("form_delete", uuid="all"),
-        follow_redirects=True
-    )
-    if os.path.isfile("test-datastore/notification.txt"):
-        os.unlink("test-datastore/notification.txt")
+    # Goto the edit page, add our ignore text
+    notification_url = url_for('test_notification_endpoint', _external=True).replace('http', 'post')
 
     # Add our URL to the import page
     test_url = url_for('test_endpoint', _external=True)
-    res = client.post(
-        url_for("form_quick_watch_add"),
-        data={"url": test_url, "tags": ''},
+
+    # cleanup for the next
+    client.post(
+        url_for("ui.form_delete", uuid="all"),
         follow_redirects=True
     )
+    notification_file = os.path.join(datastore_path, "notification.txt")
+    if os.path.isfile(notification_file):
+        os.unlink(notification_file)
 
-    assert b"Watch added" in res.data
+    uuid = client.application.config.get('DATASTORE').add_watch(url=test_url)
+    res = client.get(url_for("watchlist.index"))
 
-    # Give the thread time to pick up the first version
+    assert b'No web page change detection watches configured' not in res.data
+
+
+    client.post(url_for("ui.form_watch_checknow"), follow_redirects=True)
     wait_for_all_checks(client)
 
-    # Goto the edit page, add our ignore text
-    # Add our URL to the import page
-    url = url_for('test_notification_endpoint', _external=True)
-    notification_url = url.replace('http', 'json')
+    uuid = next(iter(live_server.app.config['DATASTORE'].data['watching']))
 
-    print(">>>> Notification URL: " + notification_url)
+    assert live_server.app.config['DATASTORE'].data['watching'][uuid]['consecutive_filter_failures'] == 0, "No filter = No filter failure"
 
-    # Just a regular notification setting, this will be used by the special 'filter not found' notification
-    notification_form_data = {"notification_urls": notification_url,
-                              "notification_title": "New ChangeDetection.io Notification - {{watch_url}}",
-                              "notification_body": "BASE URL: {{base_url}}\n"
-                                                   "Watch URL: {{watch_url}}\n"
-                                                   "Watch UUID: {{watch_uuid}}\n"
-                                                   "Watch title: {{watch_title}}\n"
-                                                   "Watch tag: {{watch_tag}}\n"
-                                                   "Preview: {{preview_url}}\n"
-                                                   "Diff URL: {{diff_url}}\n"
-                                                   "Snapshot: {{current_snapshot}}\n"
-                                                   "Diff: {{diff}}\n"
-                                                   "Diff Full: {{diff_full}}\n"
-                                                   "Diff as Patch: {{diff_patch}}\n"
-                                                   ":-)",
-                              "notification_format": "Text"}
+    watch_data = {"notification_urls": notification_url,
+                  "notification_title": "New ChangeDetection.io Notification - {{watch_url}}",
+                  "notification_body": "BASE URL: {{base_url}}\n"
+                                       "Watch URL: {{watch_url}}\n"
+                                       "Watch UUID: {{watch_uuid}}\n"
+                                       "Watch title: {{watch_title}}\n"
+                                       "Watch tag: {{watch_tag}}\n"
+                                       "Preview: {{preview_url}}\n"
+                                       "Diff URL: {{diff_url}}\n"
+                                       "Snapshot: {{current_snapshot}}\n"
+                                       "Diff: {{diff}}\n"
+                                       "Diff Full: {{diff_full}}\n"
+                                       "Diff as Patch: {{diff_patch}}\n"
+                                       ":-)",
+                  "notification_format": 'text',
+                  "fetch_backend": "html_requests",
+                  "filter_failure_notification_send": 'y',
+                  "time_between_check_use_default": "y",
+                  "headers": "",
+                  "tags": "my tag",
+                  "title": "my title 123",
+                  "time_between_check-hours": 5,  # So that the queue runner doesnt also put it in
+                  "url": test_url,
+                  }
 
-    notification_form_data.update({
-        "url": test_url,
-        "tags": "my tag",
-        "title": "my title 123",
-        "headers": "",
-        "filter_failure_notification_send": 'y',
-        "include_filters": content_filter,
-        "fetch_backend": "html_requests"})
-
-    # A POST here will also reset the filter failure counter (filter_failure_notification_threshold_attempts)
     res = client.post(
-        url_for("edit_page", uuid="first"),
-        data=notification_form_data,
+        url_for("ui.ui_edit.edit_page", uuid=uuid),
+        data=watch_data,
         follow_redirects=True
     )
 
     assert b"Updated watch." in res.data
     wait_for_all_checks(client)
+    assert live_server.app.config['DATASTORE'].data['watching'][uuid]['consecutive_filter_failures'] == 0, "No filter = No filter failure"
 
-    # Now the notification should not exist, because we didnt reach the threshold
-    assert not os.path.isfile("test-datastore/notification.txt")
+    # Now add a filter, because recheck hours == 5, ONLY pressing of the [edit] or [recheck all] should trigger
+    watch_data['include_filters'] = content_filter
+    res = client.post(
+        url_for("ui.ui_edit.edit_page", uuid=uuid),
+        data=watch_data,
+        follow_redirects=True
+    )
+    assert b"Updated watch." in res.data
+
+    # It should have checked once so far and given this error (because we hit SAVE)
+
+    wait_for_all_checks(client)
+    assert not os.path.isfile(notification_file)
+
+    # Hitting [save] would have triggered a recheck, and we have a filter, so this would be ONE failure
+    assert live_server.app.config['DATASTORE'].data['watching'][uuid]['consecutive_filter_failures'] == 1, "Should have been checked once"
 
     # recheck it up to just before the threshold, including the fact that in the previous POST it would have rechecked (and incremented)
-    for i in range(0, App._FILTER_FAILURE_THRESHOLD_ATTEMPTS_DEFAULT-2):
-        client.get(url_for("form_watch_checknow"), follow_redirects=True)
+    # Add 4 more checks
+    checked = 0
+    ATTEMPT_THRESHOLD_SETTING = live_server.app.config['DATASTORE'].data['settings']['application'].get('filter_failure_notification_threshold_attempts', 0)
+    for i in range(0, ATTEMPT_THRESHOLD_SETTING - 2):
+        checked += 1
+        client.post(url_for("ui.form_watch_checknow"), follow_redirects=True)
         wait_for_all_checks(client)
-        time.sleep(2) # delay for apprise to fire
-        assert not os.path.isfile("test-datastore/notification.txt"), f"test-datastore/notification.txt should not exist - Attempt {i} when threshold is {App._FILTER_FAILURE_THRESHOLD_ATTEMPTS_DEFAULT}"
+        res = client.get(url_for("watchlist.index"))
+        assert b'Warning, no filters were found' in res.data
+        assert not os.path.isfile(notification_file)
+        time.sleep(2)
+        wait_for_all_checks(client)
 
-    # We should see something in the frontend
-    res = client.get(url_for("index"))
-    assert b'Warning, no filters were found' in res.data
-
-    # One more check should trigger the _FILTER_FAILURE_THRESHOLD_ATTEMPTS_DEFAULT threshold
-    client.get(url_for("form_watch_checknow"), follow_redirects=True)
     wait_for_all_checks(client)
-    time.sleep(2)  # delay for apprise to fire
-    # Now it should exist and contain our "filter not found" alert
-    assert os.path.isfile("test-datastore/notification.txt")
+    assert live_server.app.config['DATASTORE'].data['watching'][uuid]['consecutive_filter_failures'] == 5
 
-    with open("test-datastore/notification.txt", 'r') as f:
+    time.sleep(2)
+    # One more check should trigger the _FILTER_FAILURE_THRESHOLD_ATTEMPTS_DEFAULT threshold
+    client.post(url_for("ui.form_watch_checknow"), follow_redirects=True)
+    wait_for_all_checks(client)
+    wait_for_notification_endpoint_output(datastore_path=datastore_path)
+
+    # Now it should exist and contain our "filter not found" alert
+    assert os.path.isfile(notification_file)
+    with open(notification_file, 'r') as f:
         notification = f.read()
 
-    assert 'CSS/xPath filter was not present in the page' in notification
-    assert content_filter.replace('"', '\\"') in notification
+    assert 'Your configured CSS/xPath filters' in notification
+
+
+    # Text (or HTML conversion) markup to make the notifications a little nicer should have worked
+    if app_notification_format.startswith('html'):
+        # apprise should have used sax-escape (&#39; instead of &quot;, " etc), lets check it worked
+
+        from apprise.conversion import convert_between
+        from apprise.common import NotifyFormat
+        escaped_filter = convert_between(NotifyFormat.TEXT, NotifyFormat.HTML, content_filter)
+
+        assert escaped_filter in notification or escaped_filter.replace('&quot;', '&#34;') in notification
+        assert 'a href="' in notification # Quotes should still be there so the link works
+
+    else:
+        assert 'a href' not in notification
+        assert content_filter in notification
 
     # Remove it and prove that it doesn't trigger when not expected
     # It should register a change, but no 'filter not found'
-    os.unlink("test-datastore/notification.txt")
-    set_response_with_filter()
+    os.unlink(notification_file)
+    set_response_with_filter(datastore_path)
 
     # Try several times, it should NOT have 'filter not found'
-    for i in range(0, App._FILTER_FAILURE_THRESHOLD_ATTEMPTS_DEFAULT):
-        client.get(url_for("form_watch_checknow"), follow_redirects=True)
+    for i in range(0, ATTEMPT_THRESHOLD_SETTING + 2):
+        client.post(url_for("ui.form_watch_checknow"), follow_redirects=True)
         wait_for_all_checks(client)
 
+    wait_for_notification_endpoint_output(datastore_path=datastore_path)
     # It should have sent a notification, but..
-    assert os.path.isfile("test-datastore/notification.txt")
+    assert os.path.isfile(notification_file)
     # but it should not contain the info about a failed filter (because there was none in this case)
-    with open("test-datastore/notification.txt", 'r') as f:
+    with open(notification_file, 'r') as f:
         notification = f.read()
     assert not 'CSS/xPath filter was not present in the page' in notification
 
     # Re #1247 - All tokens got replaced correctly in the notification
-    res = client.get(url_for("index"))
-    uuid = extract_UUID_from_client(client)
-    # UUID is correct, but notification contains tag uuid as UUIID wtf
     assert uuid in notification
 
     # cleanup for the next
-    client.get(
-        url_for("form_delete", uuid="all"),
+    client.post(
+        url_for("ui.form_delete", uuid="all"),
         follow_redirects=True
     )
-    os.unlink("test-datastore/notification.txt")
+    os.unlink(notification_file)
+    delete_all_watches(client)
 
 
-def test_setup(live_server):
-    live_server_setup(live_server)
+def test_check_include_filters_failure_notification(client, live_server, measure_memory_usage, datastore_path):
+    #   #  live_server_setup(live_server) # Setup on conftest per function
+    run_filter_test(client=client, live_server=live_server, content_filter='#nope-doesnt-exist', app_notification_format=valid_notification_formats.get('htmlcolor'), datastore_path=datastore_path)
+    # Check markup send conversion didnt affect plaintext preference
+    run_filter_test(client=client, live_server=live_server, content_filter='#nope-doesnt-exist', app_notification_format=valid_notification_formats.get('text'), datastore_path=datastore_path)
+    delete_all_watches(client)
 
-def test_check_include_filters_failure_notification(client, live_server):
-    run_filter_test(client, live_server,'#nope-doesnt-exist')
-
-def test_check_xpath_filter_failure_notification(client, live_server):
-    run_filter_test(client, live_server, '//*[@id="nope-doesnt-exist"]')
+def test_check_xpath_filter_failure_notification(client, live_server, measure_memory_usage, datastore_path):
+    #   #  live_server_setup(live_server) # Setup on conftest per function
+    run_filter_test(client=client, live_server=live_server, content_filter='//*[@id="nope-doesnt-exist"]', app_notification_format=valid_notification_formats.get('htmlcolor'), datastore_path=datastore_path)
+    delete_all_watches(client)
 
 # Test that notification is never sent
+
+def test_basic_markup_from_text(client, live_server, measure_memory_usage, datastore_path):
+    # Test the notification error templates convert to HTML if needed (link activate)
+    from ..notification.handler import markup_text_links_to_html
+    x = markup_text_links_to_html("hello https://google.com")
+    assert 'a href' in x
+    delete_all_watches(client)

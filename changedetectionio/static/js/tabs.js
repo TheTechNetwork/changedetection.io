@@ -1,11 +1,12 @@
 // Rewrite this is a plugin.. is all this JS really 'worth it?'
 
 window.addEventListener('hashchange', function () {
-    var tabs = document.getElementsByClassName('active');
-    while (tabs[0]) {
-        tabs[0].classList.remove('active');
-        document.body.classList.remove('full-width');
-    }
+    // Only remove active from tab elements, not menu items
+    var tabs = document.querySelectorAll('.tabs li.active');
+    tabs.forEach(function(tab) {
+        tab.classList.remove('active');
+    });
+    document.body.classList.remove('full-width');
     set_active_tab();
 }, false);
 
@@ -22,12 +23,10 @@ if (!has_errors.length) {
 
 function set_active_tab() {
     document.body.classList.remove('full-width');
-    var tab = document.querySelectorAll("a[href='" + location.hash + "']");
+    var tab = document.querySelectorAll(".tabs a[href='" + location.hash + "']");
     if (tab.length) {
-        tab[0].parentElement.className = "active";
+        tab[0].parentElement.classList.add("active");
     }
-    // hash could move the page down
-    window.scrollTo(0, 0);
 }
 
 function focus_error_tab() {

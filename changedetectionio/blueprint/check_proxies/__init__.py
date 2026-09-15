@@ -1,10 +1,13 @@
+import importlib
 from concurrent.futures import ThreadPoolExecutor
+
+from changedetectionio.processors.text_json_diff.processor import FilterNotFoundInResponse
 from changedetectionio.store import ChangeDetectionStore
 
 from functools import wraps
 
 from flask import Blueprint
-from flask_login import login_required
+from changedetectionio.auth_decorator import login_optionally_required
 
 STATUS_CHECKING = 0
 STATUS_FAILED = 1
@@ -30,16 +33,20 @@ def construct_blueprint(datastore: ChangeDetectionStore):
     def long_task(uuid, preferred_proxy):
         import time
         from changedetectionio.content_fetchers import exceptions as content_fetcher_exceptions
-        from changedetectionio.processors import text_json_diff
-        from changedetectionio.safe_jinja import render as jinja_render
+        from changedetectionio.jinja2_custom import render as jinja_render
 
         status = {'status': '', 'length': 0, 'text': ''}
 
         contents = ''
         now = time.time()
         try:
-            update_handler = text_json_diff.perform_site_check(datastore=datastore, watch_uuid=uuid)
-            update_handler.call_browser()
+            import asyncio
+            processor_module = importlib.import_module("changedetectionio.processors.text_json_diff.processor")
+            update_handler = processor_module.perform_site_check(datastore=datastore,
+                                                                 watch_uuid=uuid
+                                                                 )
+
+            asyncio.run(update_handler.call_browser(preferred_proxy_id=preferred_proxy))
         # title, size is len contents not len xfer
         except content_fetcher_exceptions.Non200ErrorCodeReceived as e:
             if e.status_code == 404:
@@ -48,7 +55,7 @@ def construct_blueprint(datastore: ChangeDetectionStore):
                 status.update({'status': 'ERROR', 'length': len(contents), 'text': f"{e.status_code} - Access denied"})
             else:
                 status.update({'status': 'ERROR', 'length': len(contents), 'text': f"Status code: {e.status_code}"})
-        except text_json_diff.FilterNotFoundInResponse:
+        except FilterNotFoundInResponse:
             status.update({'status': 'OK', 'length': len(contents), 'text': f"OK but CSS/xPath filter not found (page changed layout?)"})
         except content_fetcher_exceptions.EmptyReply as e:
             if e.status_code == 403 or e.status_code == 401:
@@ -87,14 +94,14 @@ def construct_blueprint(datastore: ChangeDetectionStore):
 
         return results
 
-    @login_required
-    @check_proxies_blueprint.route("/<string:uuid>/status", methods=['GET'])
+    @check_proxies_blueprint.route("/<uuid_str:uuid>/status", methods=['GET'])
+    @login_optionally_required
     def get_recheck_status(uuid):
         results = _recalc_check_status(uuid=uuid)
         return results
 
-    @login_required
-    @check_proxies_blueprint.route("/<string:uuid>/start", methods=['GET'])
+    @check_proxies_blueprint.route("/<uuid_str:uuid>/start", methods=['POST'])
+    @login_optionally_required
     def start_check(uuid):
 
         if not datastore.proxy_list:

@@ -4,22 +4,34 @@ import time
 from loguru import logger
 from changedetectionio.content_fetchers.base import Fetcher
 
+
 class fetcher(Fetcher):
     if os.getenv("WEBDRIVER_URL"):
-        fetcher_description = "WebDriver Chrome/Javascript via '{}'".format(os.getenv("WEBDRIVER_URL"))
+        fetcher_description = f"WebDriver Chrome/Javascript via \"{os.getenv('WEBDRIVER_URL', '')}\""
     else:
         fetcher_description = "WebDriver Chrome/Javascript"
 
-    # Configs for Proxy setup
-    # In the ENV vars, is prefixed with "webdriver_", so it is for example "webdriver_sslProxy"
-    selenium_proxy_settings_mappings = ['proxyType', 'ftpProxy', 'httpProxy', 'noProxy',
-                                        'proxyAutoconfigUrl', 'sslProxy', 'autodetect',
-                                        'socksProxy', 'socksVersion', 'socksUsername', 'socksPassword']
     proxy = None
+    proxy_url = None
 
-    def __init__(self, proxy_override=None, custom_browser_connection_url=None):
-        super().__init__()
-        from selenium.webdriver.common.proxy import Proxy as SeleniumProxy
+    # Capability flags
+    supports_browser_steps = False
+    supports_screenshots = True
+    supports_xpath_element_data = True
+
+    @classmethod
+    def get_status_icon_data(cls):
+        """Return Chrome browser icon data for WebDriver fetcher."""
+        return {
+            'filename': 'google-chrome-icon.png',
+            'alt': 'Using a Chrome browser',
+            'title': 'Using a Chrome browser'
+        }
+
+    def __init__(self, proxy_override=None, custom_browser_connection_url=None, **kwargs):
+        super().__init__(**kwargs)
+        from urllib.parse import urlparse
+        from selenium.webdriver.common.proxy import Proxy
 
         # .strip('"') is going to save someone a lot of time when they accidently wrap the env value
         if not custom_browser_connection_url:
@@ -28,92 +40,162 @@ class fetcher(Fetcher):
             self.browser_connection_is_custom = True
             self.browser_connection_url = custom_browser_connection_url
 
-        # If any proxy settings are enabled, then we should setup the proxy object
-        proxy_args = {}
-        for k in self.selenium_proxy_settings_mappings:
-            v = os.getenv('webdriver_' + k, False)
-            if v:
-                proxy_args[k] = v.strip('"')
+        ##### PROXY SETUP #####
 
-        # Map back standard HTTP_ and HTTPS_PROXY to webDriver httpProxy/sslProxy
-        if not proxy_args.get('webdriver_httpProxy') and self.system_http_proxy:
-            proxy_args['httpProxy'] = self.system_http_proxy
-        if not proxy_args.get('webdriver_sslProxy') and self.system_https_proxy:
-            proxy_args['httpsProxy'] = self.system_https_proxy
+        proxy_sources = [
+            self.system_http_proxy,
+            self.system_https_proxy,
+            os.getenv('webdriver_proxySocks'),
+            os.getenv('webdriver_socksProxy'),
+            os.getenv('webdriver_proxyHttp'),
+            os.getenv('webdriver_httpProxy'),
+            os.getenv('webdriver_proxyHttps'),
+            os.getenv('webdriver_httpsProxy'),
+            os.getenv('webdriver_sslProxy'),
+            proxy_override,  # last one should override
+        ]
+        # The built in selenium proxy handling is super unreliable!!! so we just grab which ever proxy setting we can find and throw it in --proxy-server=
+        for k in filter(None, proxy_sources):
+            if not k:
+                continue
+            self.proxy_url = k.strip()
 
-        # Allows override the proxy on a per-request basis
-        if proxy_override is not None:
-            proxy_args['httpProxy'] = proxy_override
+    async def run(self,
+                  fetch_favicon=True,
+                  current_include_filters=None,
+                  empty_pages_are_a_change=False,
+                  ignore_status_codes=False,
+                  is_binary=False,
+                  request_body=None,
+                  request_headers=None,
+                  request_method=None,
+                  screenshot_format=None,
+                  timeout=None,
+                  url=None,
+                  watch_uuid=None,
+                  ):
 
-        if proxy_args:
-            self.proxy = SeleniumProxy(raw=proxy_args)
+        import asyncio
 
-    def run(self,
-            url,
-            timeout,
-            request_headers,
-            request_body,
-            request_method,
-            ignore_status_codes=False,
-            current_include_filters=None,
-            is_binary=False):
+        # Wrap the entire selenium operation in a thread executor
+        def _run_sync():
+            from selenium.webdriver.chrome.options import Options as ChromeOptions
+            # request_body, request_method unused for now, until some magic in the future happens.
 
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options as ChromeOptions
-        from selenium.common.exceptions import WebDriverException
-        # request_body, request_method unused for now, until some magic in the future happens.
+            options = ChromeOptions()
 
-        options = ChromeOptions()
-        if self.proxy:
-            options.proxy = self.proxy
+            # Load Chrome options from env
+            CHROME_OPTIONS = [
+                line.strip()
+                for line in os.getenv("CHROME_OPTIONS", "").strip().splitlines()
+                if line.strip()
+            ]
 
-        self.driver = webdriver.Remote(
-            command_executor=self.browser_connection_url,
-            options=options)
+            for opt in CHROME_OPTIONS:
+                options.add_argument(opt)
 
-        try:
-            self.driver.get(url)
-        except WebDriverException as e:
-            # Be sure we close the session window
-            self.quit()
-            raise
+            # 1. proxy_config /Proxy(proxy_config) selenium object is REALLY unreliable
+            # 2. selenium-wire cant be used because the websocket version conflicts with pypeteer-ng
+            # 3. selenium only allows ONE runner at a time by default!
+            # 4. driver must use quit() or it will continue to block/hold the selenium process!!
 
-        self.driver.set_window_size(1280, 1024)
-        self.driver.implicitly_wait(int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)))
+            if self.proxy_url:
+                options.add_argument(f'--proxy-server={self.proxy_url}')
 
-        if self.webdriver_js_execute_code is not None:
-            self.driver.execute_script(self.webdriver_js_execute_code)
-            # Selenium doesn't automatically wait for actions as good as Playwright, so wait again
-            self.driver.implicitly_wait(int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)))
-
-        # @todo - how to check this? is it possible?
-        self.status_code = 200
-        # @todo somehow we should try to get this working for WebDriver
-        # raise EmptyReply(url=url, status_code=r.status_code)
-
-        # @todo - dom wait loaded?
-        time.sleep(int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)) + self.render_extract_delay)
-        self.content = self.driver.page_source
-        self.headers = {}
-
-        self.screenshot = self.driver.get_screenshot_as_png()
-
-    # Does the connection to the webdriver work? run a test connection.
-    def is_ready(self):
-        from selenium import webdriver
-        from selenium.webdriver.chrome.options import Options as ChromeOptions
-
-        self.driver = webdriver.Remote(
-            command_executor=self.command_executor,
-            options=ChromeOptions())
-
-        # driver.quit() seems to cause better exceptions
-        self.quit()
-        return True
-
-    def quit(self):
-        if self.driver:
+            from selenium.webdriver.remote.remote_connection import RemoteConnection
+            from selenium.webdriver.remote.webdriver import WebDriver as RemoteWebDriver
+            from selenium.webdriver.remote.client_config import ClientConfig
+            from urllib3.util import Timeout
+            driver = None
             try:
-                self.driver.quit()
+                connection_timeout = int(os.getenv("WEBDRIVER_CONNECTION_TIMEOUT", 90))
+                client_config = ClientConfig(
+                    remote_server_addr=self.browser_connection_url,
+                    timeout=Timeout(connect=connection_timeout, total=connection_timeout)
+                )
+                remote_connection = RemoteConnection(client_config=client_config)
+
+                driver = RemoteWebDriver(
+                    command_executor=remote_connection,
+                    options=options
+                )
+
+                driver.set_page_load_timeout(int(os.getenv("WEBDRIVER_PAGELOAD_TIMEOUT", 45)))
             except Exception as e:
-                logger.debug(f"Content Fetcher > Exception in chrome shutdown/quit {str(e)}")
+                if driver:
+                    driver.quit()
+                raise e
+
+            try:
+                driver.get(url)
+
+                if not "--window-size" in os.getenv("CHROME_OPTIONS", ""):
+                    driver.set_window_size(1280, 1024)
+
+                driver.implicitly_wait(int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)))
+
+                if self.webdriver_js_execute_code is not None:
+                    driver.execute_script(self.webdriver_js_execute_code)
+                    # Selenium doesn't automatically wait for actions as good as Playwright, so wait again
+                    driver.implicitly_wait(int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)))
+
+                # @todo - how to check this? is it possible?
+                self.status_code = 200
+                # @todo somehow we should try to get this working for WebDriver
+                # raise EmptyReply(url=url, status_code=r.status_code)
+
+                # @todo - dom wait loaded?
+                import time
+                time.sleep(int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)) + self.render_extract_delay)
+                self.content = driver.page_source
+                self.headers = {}
+
+                # Selenium always captures as PNG, convert to JPEG if needed
+                screenshot_png = driver.get_screenshot_as_png()
+
+                # Convert to JPEG if requested (for smaller file size)
+                if self.screenshot_format and self.screenshot_format.upper() == 'JPEG':
+                    from PIL import Image
+                    import io
+                    img = Image.open(io.BytesIO(screenshot_png))
+                    # Convert to RGB if needed (JPEG doesn't support transparency)
+                    # Always convert non-RGB modes to RGB to ensure JPEG compatibility
+                    if img.mode in ('RGBA', 'LA', 'P', 'PA'):
+                        # Handle transparency by compositing onto white background
+                        if img.mode == 'P':
+                            img = img.convert('RGBA')
+                        background = Image.new('RGB', img.size, (255, 255, 255))
+                        if img.mode in ('RGBA', 'LA', 'PA'):
+                            background.paste(img, mask=img.split()[-1])  # Use alpha channel as mask
+                        img = background
+                    elif img.mode != 'RGB':
+                        # For other modes, direct conversion
+                        img = img.convert('RGB')
+                    jpeg_buffer = io.BytesIO()
+                    img.save(jpeg_buffer, format='JPEG', quality=int(os.getenv("SCREENSHOT_QUALITY", 72)))
+                    self.screenshot = jpeg_buffer.getvalue()
+                    img.close()
+                else:
+                    self.screenshot = screenshot_png
+            except Exception as e:
+                driver.quit()
+                raise e
+
+            driver.quit()
+
+        # Run the selenium operations in a thread pool to avoid blocking the event loop
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _run_sync)
+
+
+# Plugin registration for built-in fetcher
+class WebDriverSeleniumFetcherPlugin:
+    """Plugin class that registers the WebDriver Selenium fetcher as a built-in plugin."""
+
+    def register_content_fetcher(self):
+        """Register the WebDriver Selenium fetcher"""
+        return ('html_webdriver', fetcher)
+
+
+# Create module-level instance for plugin registration
+webdriver_selenium_plugin = WebDriverSeleniumFetcherPlugin()
